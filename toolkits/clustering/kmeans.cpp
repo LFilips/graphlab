@@ -57,6 +57,23 @@
 
 size_t NUM_CLUSTERS = 0;
 bool IS_SPARSE = false;
+size_t distance_measure;
+
+/*
+
+Struct per la definizione di un cluster, che contiene rispettivamente:
+
+un costruttore che inizializza i parametri:
+count->0
+changed->false
+
+Le altre variabili sono :
+
+vettore nel caso di vettore denso
+map nel caso di vettore sparso
+
+
+*/
 
 struct cluster {
   cluster(): count(0), changed(false) { }
@@ -64,27 +81,39 @@ struct cluster {
   std::map<size_t, double> center_sparse;
   size_t count;
   bool changed;
-
+// salva il nuovo centro e tutte le altre variabili
   void save(graphlab::oarchive& oarc) const {
     oarc << center << count << changed << center_sparse;
   }
-
+// carica il nuovo centroide
   void load(graphlab::iarchive& iarc) {
     iarc >> center >> count >> changed >> center_sparse;
   }
 };
 
-std::vector<cluster> CLUSTERS;
+std::vector<cluster> CLUSTERS; //vettore di cluster global
 
 // the current cluster to initialize
 size_t KMEANS_INITIALIZATION;
 
+/*
+Come per il centroide ha due diverse strutture dati per il caso sparso o denso, che sono:
+
+point e point_sparse
+
+
+
+
+*/
+
 struct vertex_data{
   std::vector<double> point;
   std::map<size_t, double> point_sparse;
-  size_t best_cluster;
-  double best_distance;
-  bool changed;
+  size_t best_cluster; //miglior cluster per il vertice
+  double best_distance; //valore della migliore distanza tra tutti i cluster (sarebbe il caso di mantenerla in memoria???)
+  bool changed; //se ha cambiato assegnazione dall'iterazione precedente
+
+// stessa modalita di salvataggio che per il centroide
 
   void save(graphlab::oarchive& oarc) const {
     oarc << point << best_cluster << best_distance << changed << point_sparse;
@@ -93,6 +122,10 @@ struct vertex_data{
     iarc >> point >> best_cluster >> best_distance >> changed >> point_sparse;
   }
 };
+
+//presumento che questa struttura dati non sia utilizzata poichè non ho pesi, forse si 
+//usa nel caso di pairwise reward o cose cosi
+
 
 //use edges when edge weight file is given
 struct edge_data {
@@ -113,10 +146,54 @@ struct edge_data {
   }
 };
 
-// helper function to compute distance between points
+
+/*
+ 
+ Implementazione nativa di graphlab calcola distanza euclidea quadratica, cioè la somma dei quadrati delle differenze tra le componenti
+ , quindi sqr_dist(A,B)= (a1-b1)^2 + ... + (an - bn)^2  (squared euclidean distance)
+ Nel codice ci sono due metodi differenti, il primo è utilizzato per il calcolo cn vettori densi,
+ il secondo è nel caso dei vettori sparsi (cioè si hanno valori solo per gli elementi != 0),
+ per questo motivo ho modificato solo l'implementazione che usa le map<size_t, double>
+ 
+ */
+
+
+//helper function for dense
+double calculate_distance(const std::vector<double>& a,
+                    const std::vector<double>& b){
+
+if(distance_measure==0) //calling sqr_distance
+  return sqr_distance(a,b);
+if(distance_measure==1) //calling sqr_distance
+  return cosine_distance(a,b);
+if(distance_measure==2) //calling sqr_distance
+  return tanimoto_distance(a,b);
+
+
+}
+
+//helper function for sparse
+double calculate_distance(const std::map<size_t, double>& a,
+                    const std::map<size_t, double>& b){
+
+if(distance_measure==0) //calling sqr_distance
+  return sqr_distance(a,b);
+if(distance_measure==1) //calling sqr_distance
+  return cosine_distance(a,b);
+if(distance_measure==2) //calling sqr_distance
+  return tanimoto_distance(a,b);
+
+
+}
+
+
+
+//sqr_distance for dense vector
 double sqr_distance(const std::vector<double>& a,
                     const std::vector<double>& b) {
-  ASSERT_EQ(a.size(), b.size());
+    
+    
+    ASSERT_EQ(a.size(), b.size());
   double total = 0;
   for (size_t i = 0;i < a.size(); ++i) {
     double d = a[i] - b[i];
@@ -125,57 +202,200 @@ double sqr_distance(const std::vector<double>& a,
   return total;
 }
 
+//cosine distance for dense vector
+double cosine_distance(const std::vector<double>& a,
+                    const std::vector<double>& b) {
+
+   double ip = 0.0;
+   double lenA = 0.0;
+   double lenB = 0.0;
+   double valA=0.0;
+   double valB=0.0;
+ASSERT_EQ(a.size(), b.size()); //should be of the same length??
+
+//calculate the inner product and the lenA and lenB (A and B are of the same length)
+for (size_t i = 0;i < a.size(); ++i) {
+    valA=a[i];
+    valB=b[i];
+    lenA += valA * valA; //shift for a[i]^2
+    lenB += valB * valB;
+    ip += valA * valB;
+  }
+
+
+if(ip == 0.0 || lenA == 0.0)
+     return 1.0;
+
+ if(lenB == 1.0)
+     return 1.0;
+
+return 1.0 - ip/(sqrt(lenA)*sqrt(lenB));
+
+
+}
+
+
+//tanimoto distance for sparse vector
+double tanimoto_distance(const std::vector<double>& a,
+                    const std::vector<double>& b) {
+
+
+  double ip = 0.0;
+   double lenA = 0.0;
+   double lenB = 0.0;
+   double valA=0.0;
+   double valB=0.0;
+ASSERT_EQ(a.size(), b.size()); //should be of the same length??
+
+//calculate the inner product and the lenA and lenB (A and B are of the same length)
+for (size_t i = 0;i < a.size(); ++i) {
+    valA=a[i];
+    valB=b[i];
+    lenA += valA * valA; //shift for a[i]^2
+    lenB += valB * valB;
+    ip += valA * valB;
+  }
+
+
+if(ip == 0.0 || lenA == 0.0) //or A or B are ==0 so return 1, the max distance
+      return 1.0;
+
+double denominator=(sqrt(lenA)+sqrt(lenB)) - (ip) ;
+    
+    if (denominator < ip) {
+        
+        denominator = ip;
+    }
+    
+    if (denominator > 0) {
+        // denominator == 0 only when dot(a,a) == dot(b,b) == dot(a,b) == 0
+        return 1.0 - (ip / denominator);
+    } else {
+        return 0.0;
+    }
+    
+
+
+}
+
+
+
+//sqr_distance for sparse vector
 double sqr_distance(const std::map<size_t, double>& a,
                     const std::map<size_t, double>& b) {
-  double total = 0.0;
-  for(std::map<size_t, double>::const_iterator iter = a.begin();
-      iter != a.end(); ++iter){
-    size_t id = (*iter).first;
-    double val = (*iter).second;
-    if(b.find(id) != b.end()){
-      double d = val - b.at(id);
-      total += d*d;
-    }else{
-      total += val * val;
-    }
-  }
-  for(std::map<size_t, double>::const_iterator iter = b.begin();
-      iter != b.end(); ++iter){
-    double val = (*iter).second;
-    if(a.find((*iter).first) == a.end()){
-      total += val * val;
-    }
-  }
 
-  return total;
 
-////   cosine distance is better for sparse datapoints?
-//    double ip = 0.0;
-//    double lenA = 0.0;
-//    double lenB = 0.0;
-//    for(std::map<size_t, double>::const_iterator iter = a.begin();
-//        iter != a.end(); ++iter){
-//      size_t id = (*iter).first;
-//      double val = (*iter).second;
-//      if(b.find(id) != b.end()){
-//        ip += val * b.at(id);
-//      }
-//      lenA += val*val;
-//    }
-//
-//    if(ip == 0.0 || lenA == 0.0)
-//      return 1.0;
-//
-//    for(std::map<size_t, double>::const_iterator iter = b.begin();
-//        iter != b.end(); ++iter){
-//      double val = (*iter).second;
-//      lenB += val * val;
-//    }
-//
-//    if(lenB == 1.0)
-//      return 1.0;
-//
-//    return 1.0 - ip/(sqrt(lenA)*sqrt(lenB));
+ double total = 0.0;
+ for(std::map<size_t, double>::const_iterator iter = a.begin();
+     iter != a.end(); ++iter){
+   size_t id = (*iter).first;
+   double val = (*iter).second;
+   if(b.find(id) != b.end()){
+     double d = val - b.at(id);
+     total += d*d;
+   }else{
+     total += val * val;
+   }
+ }
+ for(std::map<size_t, double>::const_iterator iter = b.begin();
+     iter != b.end(); ++iter){
+   double val = (*iter).second;
+   if(a.find((*iter).first) == a.end()){
+     total += val * val;
+   }
+ }
+
+ return total;
+
+
+}
+
+//cosine distance for sparse vector
+double cosine_distance(const std::map<size_t, double>& a,
+                    const std::map<size_t, double>& b) {
+
+//   cosine distance --> A · B/||A||*||B||
+   double ip = 0.0;
+   double lenA = 0.0;
+   double lenB = 0.0;
+   for(std::map<size_t, double>::const_iterator iter = a.begin();
+       iter != a.end(); ++iter){
+     size_t id = (*iter).first;
+     double val = (*iter).second;
+     if(b.find(id) != b.end()){
+       ip += val * b.at(id);
+     }
+     lenA += val*val;
+   }
+
+   if(ip == 0.0 || lenA == 0.0)
+     return 1.0;
+
+   for(std::map<size_t, double>::const_iterator iter = b.begin();
+       iter != b.end(); ++iter){
+     double val = (*iter).second;
+     lenB += val * val;
+   }
+
+   if(lenB == 1.0)
+     return 1.0;
+
+   return 1.0 - ip/(sqrt(lenA)*sqrt(lenB));
+
+}
+
+//tanimoto distace for sparse vector
+double tanimoto_distance(const std::map<size_t, double>& a,
+                    const std::map<size_t, double>& b) {
+
+
+//   tanimoto ---> A*B=(||A||+||B||) -(A*B)
+    
+    double ip = 0.0;
+    double lenA = 0.0;
+    double lenB = 0.0;
+    
+    
+    for(std::map<size_t, double>::const_iterator iter = a.begin();
+        iter != a.end(); ++iter){
+      size_t id = (*iter).first;
+      double val = (*iter).second;
+      if(b.find(id) != b.end()){
+        ip += val * b.at(id);
+      }
+      lenA += val*val;
+    }
+
+    if(ip == 0.0 || lenA == 0.0) //or A or B are ==0 so return 1, the max distance
+      return 1.0;
+
+    for(std::map<size_t, double>::const_iterator iter = b.begin();
+        iter != b.end(); ++iter){
+      double val = (*iter).second;
+      lenB += val * val;
+    }
+
+    //if lenB=1  A*1=(A+1) - (A) ---> A/1 --> A, A can be any value, so this check isn't good for tanimoto
+    //for cosine is good but because: A*B=||A||*||B|| --> A/||A|| (since all the value are positive) --> 1
+    //    if(lenB == 1.0)
+    //      return 1.0;
+
+    
+    //                 (  ||A||   +   ||B|| )  -  A*B
+    double denominator=(sqrt(lenA)+sqrt(lenB)) - (ip) ;
+    
+    if (denominator < ip) {
+        
+        denominator = ip;
+    }
+    
+    if (denominator > 0) {
+        // denominator == 0 only when dot(a,a) == dot(b,b) == dot(a,b) == 0
+        return 1.0 - (ip / denominator);
+    } else {
+        return 0.0;
+    }
+    
 
 }
 
@@ -226,9 +446,10 @@ std::map<size_t, double>& scale_vector(std::map<size_t, double>& a, double d) {
   return a;
 }
 
-
+// definizione del tipo di grafo per la computazione !!!!!
 typedef graphlab::distributed_graph<vertex_data, edge_data> graph_type;
 
+//che fa??
 graphlab::atomic<graphlab::vertex_id_type> NEXT_VID;
 
 // Read a line from a file and creates a vertex
@@ -250,8 +471,10 @@ bool vertex_loader(graph_type& graph, const std::string& fname,
      ascii::space);
 
   if (!success) return false;
-  vtx.best_cluster = (size_t)(-1);
-  vtx.best_distance = std::numeric_limits<double>::infinity();
+  //equivalente di std::numeric_limits<size_t>::max() non adrebbe fatto, corrisponde al valore 18446744073709551615
+  vtx.best_cluster = (size_t)(-1); 
+  //
+  vtx.best_distance = std::numeric_limits<double>::infinity();//inizializza con dist= infinito (cioè 0)
   vtx.changed = false;
   graph.add_vertex(NEXT_VID.inc_ret_last(1), vtx);
   return true;
@@ -308,6 +531,14 @@ bool vertex_loader_with_id(graph_type& graph, const std::string& fname,
   return true;
 }
 
+/* 
+questo è il mio caso, questa cosa è utile per capire come lui gestisce i flag da input:
+cioè crea 4-5 funzioni diverse in base ai casi, invece di stare a fare complicati switch
+o if annidati, probabilmente è meglio avere piu linee di codice, rispetto ad una piccola perdita
+a livello computazione di 3-4 istruzioni, considerando che questo tipo di metodi, cioè il load
+di un vertice, viene chiamato anche un miliardo di volte, quindi la velocità è tutto
+*/
+
 // Read a line from a file and creates a vertex
 bool vertex_loader_with_id_sparse(graph_type& graph, const std::string& fname,
                    const std::string& line) {
@@ -338,7 +569,7 @@ bool vertex_loader_with_id_sparse(graph_type& graph, const std::string& fname,
   return true;
 }
 
-
+// non utilizzato
 
 //call this when edge weight file is given.
 //each line should be [source id] [target id] [weight].
@@ -403,7 +634,7 @@ struct min_point_size_reducer: public graphlab::IS_POD_TYPE {
  * is smaller that its previous cluster assignment
  */
 void kmeans_pp_initialization(graph_type::vertex_type& v) {
-  double d = sqr_distance(v.data().point,
+  double d = calculate_distance(v.data().point,
                           CLUSTERS[KMEANS_INITIALIZATION].center);
   if (v.data().best_distance > d) {
     v.data().best_distance = d;
@@ -412,7 +643,7 @@ void kmeans_pp_initialization(graph_type::vertex_type& v) {
 }
 
 void kmeans_pp_initialization_sparse(graph_type::vertex_type& v) {
-  double d = sqr_distance(v.data().point_sparse,
+  double d = calculate_distance(v.data().point_sparse,
                           CLUSTERS[KMEANS_INITIALIZATION].center_sparse);
   if (v.data().best_distance > d) {
     v.data().best_distance = d;
@@ -532,9 +763,9 @@ void kmeans_iteration(graph_type::vertex_type& v) {
       if (CLUSTERS[i].center.size() > 0 || CLUSTERS[i].center_sparse.size() > 0) {
         double d = 0.0;
         if(IS_SPARSE == true)
-          d = sqr_distance(v.data().point_sparse, CLUSTERS[i].center_sparse);
+          d = calculate_distance(v.data().point_sparse, CLUSTERS[i].center_sparse);
         else
-          d = sqr_distance(v.data().point, CLUSTERS[i].center);
+          d = calculate_distance(v.data().point, CLUSTERS[i].center);
         if (d < v.data().best_distance) {
           v.data().best_distance = d;
           v.data().best_cluster = i;
@@ -549,9 +780,9 @@ void kmeans_iteration(graph_type::vertex_type& v) {
           (CLUSTERS[i].center.size() > 0 || CLUSTERS[i].center_sparse.size() > 0)) {
         double d = 0.0;
         if(IS_SPARSE == true)
-          d = sqr_distance(v.data().point_sparse, CLUSTERS[i].center_sparse);
+          d = calculate_distance(v.data().point_sparse, CLUSTERS[i].center_sparse);
         else
-          d= sqr_distance(v.data().point, CLUSTERS[i].center);
+          d= calculate_distance(v.data().point, CLUSTERS[i].center);
         if (d < v.data().best_distance) {
           v.data().best_distance = d;
           v.data().best_cluster = i;
@@ -628,9 +859,9 @@ public:
       if (CLUSTERS[i].center.size() > 0 || CLUSTERS[i].center_sparse.size() > 0) {
         double d = 0.0;
         if(IS_SPARSE == true)
-          d = sqr_distance(vertex.data().point_sparse, CLUSTERS[i].center_sparse);
+          d = calculate_distance(vertex.data().point_sparse, CLUSTERS[i].center_sparse);
         else
-          d = sqr_distance(vertex.data().point, CLUSTERS[i].center);
+          d = calculate_distance(vertex.data().point, CLUSTERS[i].center);
         //consider neighbors
         const std::map<size_t, double>& cw_map = total.cw_map;
         for (std::map<size_t, double>::const_iterator iter = cw_map.begin();
@@ -772,15 +1003,19 @@ int main(int argc, char** argv) {
      "see the --output-cluster and --output-data arguments");
 
   std::string datafile;
-  std::string outcluster_file;
+  std::string outcluster_file;  
   std::string outdata_file;
   std::string edgedata_file;
   size_t MAX_ITERATION = 0;
   bool use_id = false;
+  distance_measure=0;
   clopts.attach_option("data", datafile,
                        "Input file. Each line holds a white-space or comma separated numeric vector");
   clopts.attach_option("clusters", NUM_CLUSTERS,
                        "The number of clusters to create.");
+  clopts.attach_option("distance-measure",distance_measure,
+                       "Distance Measure, The similarity distance criteria for vector, 0 for squared"
+                       "distance, 1 for cosine similarity and 2 for tanimoto distance");
   clopts.attach_option("output-clusters", outcluster_file,
                        "If set, will write a file containing cluster centers "
                        "to this filename. This must be on the local filesystem "
@@ -788,7 +1023,7 @@ int main(int argc, char** argv) {
   clopts.attach_option("output-data", outdata_file,
                        "If set, will output a copy of the input data with an additional "
                        "two columns. The first added column is the distance to assigned "
-		       "center and the last is the assigned cluster centers. The output "
+           "center and the last is the assigned cluster centers. The output "
                        "will be written to a sequence of filenames where each file is "
                        "prefixed by this value. This may be on HDFS.");
   clopts.attach_option("sparse", IS_SPARSE,
@@ -807,6 +1042,9 @@ int main(int argc, char** argv) {
   clopts.attach_option("max-iteration", MAX_ITERATION,
                        "The max number of iterations");
 
+
+
+
   if(!clopts.parse(argc, argv)) return EXIT_FAILURE;
   if (datafile == "") {
     std::cout << "--data is not optional\n";
@@ -821,6 +1059,15 @@ int main(int argc, char** argv) {
       std::cout << "--id is not optional when you use edge data\n";
       return EXIT_FAILURE;
     }
+  }
+
+  std::cout << "Valore distance_measure " << distance_measure << "\n";
+
+  if(distance_measure!=0 || distance_measure!=1 || distance_measure!=2){
+
+      std::cout << "--distance-measure have to be 0 for sqr_distance, 1 for cosine or 2 for tanimoto\n";
+      return EXIT_FAILURE;
+
   }
 
   graphlab::mpi_tools::init(argc, argv);
@@ -900,8 +1147,8 @@ int main(int argc, char** argv) {
   bool clusters_changed = true;
   size_t iteration_count = 0;
   while(clusters_changed) {
-		if(MAX_ITERATION > 0 && iteration_count >= MAX_ITERATION)
-			break;
+    if(MAX_ITERATION > 0 && iteration_count >= MAX_ITERATION)
+      break;
 
     cluster_center_reducer cc = graph.map_reduce_vertices<cluster_center_reducer>
                                     (cluster_center_reducer::get_center);
@@ -911,7 +1158,7 @@ int main(int argc, char** argv) {
     if (iteration_count > 0) {
       dc.cout() << "Kmeans iteration " << iteration_count << ": " <<
                  "# points with changed assignments = " << cc.num_changed << 
-		 " total cost: " << cc.cost << std::endl;
+     " total cost: " << cc.cost << std::endl;
     }
     for (size_t i = 0;i < NUM_CLUSTERS; ++i) {
       double d = cc.new_clusters[i].count;
