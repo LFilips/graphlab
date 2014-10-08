@@ -158,36 +158,6 @@ struct edge_data {
  */
 
 
-//helper function for dense
-double calculate_distance(const std::vector<double>& a,
-                    const std::vector<double>& b){
-
-if(distance_measure==0) //calling sqr_distance
-  return sqr_distance(a,b);
-if(distance_measure==1) //calling sqr_distance
-  return cosine_distance(a,b);
-if(distance_measure==2) //calling sqr_distance
-  return tanimoto_distance(a,b);
-
-
-}
-
-//helper function for sparse
-double calculate_distance(const std::map<size_t, double>& a,
-                    const std::map<size_t, double>& b){
-
-if(distance_measure==0) //calling sqr_distance
-  return sqr_distance(a,b);
-if(distance_measure==1) //calling sqr_distance
-  return cosine_distance(a,b);
-if(distance_measure==2) //calling sqr_distance
-  return tanimoto_distance(a,b);
-
-
-}
-
-
-
 //sqr_distance for dense vector
 double sqr_distance(const std::vector<double>& a,
                     const std::vector<double>& b) {
@@ -398,6 +368,38 @@ double tanimoto_distance(const std::map<size_t, double>& a,
     
 
 }
+
+
+
+//helper function for dense
+double calculate_distance(const std::vector<double>& a,
+                    const std::vector<double>& b){
+
+if(distance_measure==0) //calling sqr_distance
+  return sqr_distance(a,b);
+if(distance_measure==1) //calling sqr_distance
+  return cosine_distance(a,b);
+if(distance_measure==2) //calling sqr_distance
+  return tanimoto_distance(a,b);
+
+
+}
+
+//helper function for sparse
+double calculate_distance(const std::map<size_t, double>& a,
+                    const std::map<size_t, double>& b){
+
+if(distance_measure==0) //calling sqr_distance
+  return sqr_distance(a,b);
+if(distance_measure==1) //calling sqr_distance
+  return cosine_distance(a,b);
+if(distance_measure==2) //calling sqr_distance
+  return tanimoto_distance(a,b);
+
+
+}
+
+
 
 
 // helper function to add two vectors
@@ -1061,11 +1063,11 @@ int main(int argc, char** argv) {
     }
   }
 
-  std::cout << "Valore distance_measure " << distance_measure << "\n";
+  std::cout << "distance_measure Value " << distance_measure << "\n";
 
-  if(distance_measure!=0 || distance_measure!=1 || distance_measure!=2){
+  if(distance_measure!=0 && distance_measure!=1 && distance_measure!=2){
 
-      std::cout << "--distance-measure have to be 0 for sqr_distance, 1 for cosine or 2 for tanimoto\n";
+      std::cout << "wrong --distance-measure value!!, should be 0 for sqr_distance, 1 for cosine or 2 for tanimoto\n";
       return EXIT_FAILURE;
 
   }
