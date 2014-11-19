@@ -59,21 +59,7 @@ size_t NUM_CLUSTERS = 0;
 bool IS_SPARSE = false;
 size_t distance_measure;
 
-/*
 
-Struct per la definizione di un cluster, che contiene rispettivamente:
-
-un costruttore che inizializza i parametri:
-count->0
-changed->false
-
-Le altre variabili sono :
-
-vettore nel caso di vettore denso
-map nel caso di vettore sparso
-
-
-*/
 
 struct cluster {
   cluster(): count(0), changed(false) { }
@@ -91,29 +77,19 @@ struct cluster {
   }
 };
 
-std::vector<cluster> CLUSTERS; //vettore di cluster global
+std::vector<cluster> CLUSTERS;
 
-// the current cluster to initialize
+
 size_t KMEANS_INITIALIZATION;
 
-/*
-Come per il centroide ha due diverse strutture dati per il caso sparso o denso, che sono:
 
-point e point_sparse
-
-
-
-
-*/
 
 struct vertex_data{
   std::vector<double> point;
   std::map<size_t, double> point_sparse;
-  size_t best_cluster; //miglior cluster per il vertice
-  double best_distance; //valore della migliore distanza tra tutti i cluster (sarebbe il caso di mantenerla in memoria???)
-  bool changed; //se ha cambiato assegnazione dall'iterazione precedente
-
-// stessa modalita di salvataggio che per il centroide
+  size_t best_cluster;
+  double best_distance;
+  bool changed;
 
   void save(graphlab::oarchive& oarc) const {
     oarc << point << best_cluster << best_distance << changed << point_sparse;
@@ -122,9 +98,6 @@ struct vertex_data{
     iarc >> point >> best_cluster >> best_distance >> changed >> point_sparse;
   }
 };
-
-//presumento che questa struttura dati non sia utilizzata poichè non ho pesi, forse si 
-//usa nel caso di pairwise reward o cose cosi
 
 
 //use edges when edge weight file is given
@@ -149,7 +122,7 @@ struct edge_data {
 
 /*
  
- In graphlab vector can be represented as dense or sparse.
+ Vector can be represented as dense or sparse.
  The following methods are implementation of square euclidean,cosine similarity
  and tanimoto distance, for dense and sparse vector
  */
@@ -341,12 +314,6 @@ double tanimoto_distance(const std::map<size_t, double>& a,
       double val = (*iter).second;
       lenB += val * val;
     }
-
-    //if lenB=1  A*1=(A+1) - (A) ---> A/1 --> A, A can be any value, so this check isn't good for tanimoto
-    //for cosine is good but because: A*B=||A||*||B|| --> A/||A|| (since all the value are positive) --> 1
-    //    if(lenB == 1.0)
-    //      return 1.0;
-
     
     //                 (  ||A||   +   ||B|| )  -  A*B
     double denominator=(sqrt(lenA)+sqrt(lenB)) - (ip) ;
@@ -473,16 +440,16 @@ bool vertex_loader(graph_type& graph, const std::string& fname,
      ascii::space);
 
   if (!success) return false;
-  //equivalente di std::numeric_limits<size_t>::max() non adrebbe fatto, corrisponde al valore 18446744073709551615
+
   vtx.best_cluster = (size_t)(-1); 
-  //
-  vtx.best_distance = std::numeric_limits<double>::infinity();//inizializza con dist= infinito (cioè 0)
+  
+  vtx.best_distance = std::numeric_limits<double>::infinity();
   vtx.changed = false;
   graph.add_vertex(NEXT_VID.inc_ret_last(1), vtx);
   return true;
 }
 
-// Read a line from a file and creates a vertex
+
 bool vertex_loader_sparse(graph_type& graph, const std::string& fname,
                    const std::string& line) {
   if (line.empty()) return true;
@@ -533,13 +500,7 @@ bool vertex_loader_with_id(graph_type& graph, const std::string& fname,
   return true;
 }
 
-/* 
-questo è il mio caso, questa cosa è utile per capire come lui gestisce i flag da input:
-cioè crea 4-5 funzioni diverse in base ai casi, invece di stare a fare complicati switch
-o if annidati, probabilmente è meglio avere piu linee di codice, rispetto ad una piccola perdita
-a livello computazione di 3-4 istruzioni, considerando che questo tipo di metodi, cioè il load
-di un vertice, viene chiamato anche un miliardo di volte, quindi la velocità è tutto
-*/
+
 
 // Read a line from a file and creates a vertex
 bool vertex_loader_with_id_sparse(graph_type& graph, const std::string& fname,
@@ -571,7 +532,6 @@ bool vertex_loader_with_id_sparse(graph_type& graph, const std::string& fname,
   return true;
 }
 
-// non utilizzato
 
 //call this when edge weight file is given.
 //each line should be [source id] [target id] [weight].
@@ -1062,8 +1022,6 @@ int main(int argc, char** argv) {
       return EXIT_FAILURE;
     }
   }
-
-  std::cout << "distance_measure Value " << distance_measure << "\n";
 
   if(distance_measure!=0 && distance_measure!=1 && distance_measure!=2){
 
