@@ -1,4 +1,4 @@
-/*  
+/*
  * Copyright (c) 2009 Carnegie Mellon University. 
  *     All rights reserved.
  *
@@ -149,12 +149,9 @@ struct edge_data {
 
 /*
  
- Implementazione nativa di graphlab calcola distanza euclidea quadratica, cioè la somma dei quadrati delle differenze tra le componenti
- , quindi sqr_dist(A,B)= (a1-b1)^2 + ... + (an - bn)^2  (squared euclidean distance)
- Nel codice ci sono due metodi differenti, il primo è utilizzato per il calcolo cn vettori densi,
- il secondo è nel caso dei vettori sparsi (cioè si hanno valori solo per gli elementi != 0),
- per questo motivo ho modificato solo l'implementazione che usa le map<size_t, double>
- 
+ In graphlab vector can be represented as dense or sparse.
+ The following methods are implementation of square euclidean,cosine similarity
+ and tanimoto distance, for dense and sparse vector
  */
 
 
@@ -181,13 +178,13 @@ double cosine_distance(const std::vector<double>& a,
    double lenB = 0.0;
    double valA=0.0;
    double valB=0.0;
-ASSERT_EQ(a.size(), b.size()); //should be of the same length??
+ASSERT_EQ(a.size(), b.size());
 
 //calculate the inner product and the lenA and lenB (A and B are of the same length)
 for (size_t i = 0;i < a.size(); ++i) {
     valA=a[i];
     valB=b[i];
-    lenA += valA * valA; //shift for a[i]^2
+    lenA += valA * valA;
     lenB += valB * valB;
     ip += valA * valB;
   }
@@ -205,7 +202,7 @@ return 1.0 - ip/(sqrt(lenA)*sqrt(lenB));
 }
 
 
-//tanimoto distance for sparse vector
+//tanimoto distance for dense vector
 double tanimoto_distance(const std::vector<double>& a,
                     const std::vector<double>& b) {
 
@@ -221,7 +218,7 @@ ASSERT_EQ(a.size(), b.size()); //should be of the same length??
 for (size_t i = 0;i < a.size(); ++i) {
     valA=a[i];
     valB=b[i];
-    lenA += valA * valA; //shift for a[i]^2
+    lenA += valA * valA;
     lenB += valB * valB;
     ip += valA * valB;
   }
@@ -375,12 +372,14 @@ double tanimoto_distance(const std::map<size_t, double>& a,
 double calculate_distance(const std::vector<double>& a,
                     const std::vector<double>& b){
 
-if(distance_measure==0) //calling sqr_distance
+if(distance_measure==0)
   return sqr_distance(a,b);
-if(distance_measure==1) //calling sqr_distance
+else if(distance_measure==1)
   return cosine_distance(a,b);
-if(distance_measure==2) //calling sqr_distance
+else if(distance_measure==2)
   return tanimoto_distance(a,b);
+else return 0.0;
+
 
 
 }
@@ -389,12 +388,13 @@ if(distance_measure==2) //calling sqr_distance
 double calculate_distance(const std::map<size_t, double>& a,
                     const std::map<size_t, double>& b){
 
-if(distance_measure==0) //calling sqr_distance
-  return sqr_distance(a,b);
-if(distance_measure==1) //calling sqr_distance
-  return cosine_distance(a,b);
-if(distance_measure==2) //calling sqr_distance
-  return tanimoto_distance(a,b);
+if(distance_measure==0)
+    return sqr_distance(a,b);
+else if(distance_measure==1)
+    return cosine_distance(a,b);
+else if(distance_measure==2)
+    return tanimoto_distance(a,b);
+else return 0.0;
 
 
 }
